@@ -9,6 +9,10 @@ import { PageLoading } from '@/components/common/Loading'
 import { ConfirmModal } from '@/components/common/ConfirmModal'
 import type { NotificationChannel } from '@/types'
 
+const defaultBarkIconUrl = 'https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/f5/01/e7/f501e794-30b4-c66c-2ec8-9730d5ebecf7/AppIcon-0-0-1x_U007epad-0-1-0-sRGB-85-220.png/512x512bb.jpg'
+const defaultBarkChatTitleTemplate = '{{account_remark}}-{{buyer_nick}}'
+const barkChatTitleTemplateKey = 'bark_chat_title_template'
+
 // 所有支持的渠道类型配置
 const channelTypes = [
   { 
@@ -40,7 +44,8 @@ const channelTypes = [
     placeholder: '{"device_key": "xxx", "server_url": "https://api.day.app"}',
     defaultConfig: {
       device_key: "你的设备密钥",
-      server_url: "https://api.day.app"
+      server_url: "https://api.day.app",
+      icon: defaultBarkIconUrl
     }
   },
   { 
@@ -206,11 +211,33 @@ const getTemplateValidationError = (template: string, templateType: Notification
   return null
 }
 
+const getBarkChatTitleValidationError = (template: string): string | null => {
+  if (!template.trim()) return null
+
+  const placeholderPattern = /{{\s*([A-Za-z_][A-Za-z0-9_]*)\s*}}/g
+  const placeholders = [...template.matchAll(placeholderPattern)]
+  const remaining = template.replace(placeholderPattern, '')
+  if (remaining.includes('{{') || remaining.includes('}}')) {
+    return '占位符必须使用 {{variable}} 格式'
+  }
+
+  const knownVariables = new Set(['account_remark', 'buyer_nick'])
+  const unknownVariables = [...new Set(
+    placeholders.map((match) => match[1]).filter((name) => !knownVariables.has(name)),
+  )]
+  return unknownVariables.length > 0 ? `不支持的占位符: ${unknownVariables.join(', ')}` : null
+}
+
 const splitTemplateConfig = (config?: Record<string, unknown>) => {
   const templates: Record<NotificationTemplateType, string> = { ...defaultTemplates }
   const channelConfig: Record<string, unknown> = {}
+  let barkChatTitleTemplate = ''
 
   for (const [key, value] of Object.entries(config || {})) {
+    if (key === barkChatTitleTemplateKey) {
+      if (typeof value === 'string') barkChatTitleTemplate = value
+      continue
+    }
     const templateType = templateDefinitions.find((definition) => templateConfigKeys[definition.type] === key)?.type
     if (templateType) {
       if (typeof value === 'string' && value.trim()) {
@@ -221,7 +248,7 @@ const splitTemplateConfig = (config?: Record<string, unknown>) => {
     }
   }
 
-  return { templates, channelConfig }
+  return { templates, channelConfig, barkChatTitleTemplate }
 }
 
 const channelTypeLabels: Record<string, string> = Object.fromEntries(
@@ -239,6 +266,7 @@ export function NotificationChannels() {
   const [formName, setFormName] = useState('')
   const [formConfig, setFormConfig] = useState('')
   const [formTemplates, setFormTemplates] = useState<Record<NotificationTemplateType, string>>({ ...defaultTemplates })
+  const [formBarkChatTitleTemplate, setFormBarkChatTitleTemplate] = useState('')
   const [formEnabled, setFormEnabled] = useState(true)
   const [saving, setSaving] = useState(false)
 
@@ -346,6 +374,7 @@ export function NotificationChannels() {
       setFormConfig('')
     }
     setFormTemplates({ ...defaultTemplates })
+    setFormBarkChatTitleTemplate('')
     setFormEnabled(true)
     setIsModalOpen(true)
   }
@@ -357,7 +386,7 @@ export function NotificationChannels() {
     setEditingChannel(channel)
     setFormName(channel.name)
     // 编辑时如果配置为空，也填充默认样例
-    const { templates, channelConfig } = splitTemplateConfig(channel.config)
+    const { templates, channelConfig, barkChatTitleTemplate } = splitTemplateConfig(channel.config)
     if (Object.keys(channelConfig).length > 0) {
       setFormConfig(JSON.stringify(channelConfig, null, 2))
     } else if (typeConfig?.defaultConfig) {
@@ -366,6 +395,7 @@ export function NotificationChannels() {
       setFormConfig('')
     }
     setFormTemplates(templates)
+    setFormBarkChatTitleTemplate(barkChatTitleTemplate)
     setFormEnabled(channel.enabled)
     setIsModalOpen(true)
   }
@@ -408,6 +438,17 @@ export function NotificationChannels() {
         if (template.trim() && template !== defaultTemplates[definition.type]) {
           config[templateConfigKeys[definition.type]] = template
         }
+      }
+
+      delete config[barkChatTitleTemplateKey]
+      if (selectedType === 'bark') {
+        const titleValidationError = getBarkChatTitleValidationError(formBarkChatTitleTemplate)
+        if (titleValidationError) {
+          addToast({ type: 'error', message: `Bark聊天标题${titleValidationError}` })
+          return
+        }
+        // 显式保存空值，使历史通用 title 不会覆盖新默认聊天标题。
+        config[barkChatTitleTemplateKey] = formBarkChatTitleTemplate
       }
 
       const data = {
@@ -624,6 +665,21 @@ export function NotificationChannels() {
                     {getConfigHint(selectedType)}
                   </p>
                 </div>
+                {selectedType === 'bark' && (
+                  <div>
+                    <label className="input-label">Bark 聊天标题模板</label>
+                    <input
+                      type="text"
+                      value={formBarkChatTitleTemplate}
+                      onChange={(event) => setFormBarkChatTitleTemplate(event.target.value)}
+                      className="input-ios font-mono text-sm"
+                      placeholder={defaultBarkChatTitleTemplate}
+                    />
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                      留空使用默认值 {defaultBarkChatTitleTemplate}；账号备注为空时默认改用账号 ID。可用变量：{'{{account_remark}}'}、{'{{buyer_nick}}'}。
+                    </p>
+                  </div>
+                )}
                 <div className="border-t border-slate-200 dark:border-slate-700 pt-4 space-y-4">
                   <div>
                     <p className="input-label">通知正文模板</p>

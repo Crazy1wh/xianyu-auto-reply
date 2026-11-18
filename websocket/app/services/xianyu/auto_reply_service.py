@@ -1241,6 +1241,7 @@ class AutoReplyService:
                 "account": account_desc,
                 "account_id": self.cookie_id,
                 "account_remark": remark or "未知",
+                "_account_remark_raw": remark,
                 "buyer_nick": send_user_name or "未知",
                 "buyer_id": send_user_id or "未知",
                 "message": send_message or "",
@@ -1285,7 +1286,14 @@ class AutoReplyService:
                     elif channel_type in ('feishu', 'lark'):
                         await send_feishu_notification(config_data, channel_message)
                     elif channel_type == 'bark':
-                        await send_bark_notification(config_data, channel_message)
+                        from common.utils.bark_notification import prepare_bark_chat_notification
+
+                        bark_config, bark_message = prepare_bark_chat_notification(
+                            config_data,
+                            channel_message,
+                            template_context,
+                        )
+                        await send_bark_notification(bark_config, bark_message)
                     elif channel_type == 'email':
                         await send_email_notification(config_data, channel_message)
                     elif channel_type == 'webhook':

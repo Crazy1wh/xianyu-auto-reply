@@ -28,6 +28,7 @@ from common.utils.notification_utils import (
 from common.services.token_api_mode import TOKEN_API_NAMES
 from common.utils.text_utils import safe_str
 from common.utils.notification_template import render_notification_template
+from common.utils.bark_notification import prepare_bark_chat_notification
 
 
 class NotificationManager:
@@ -141,6 +142,7 @@ class NotificationManager:
                     "account": account_desc,
                     "account_id": self.cookie_id,
                     "account_remark": remark or "未知",
+                    "_account_remark_raw": remark,
                     "buyer_nick": send_user_name or "未知",
                     "buyer_id": send_user_id or "未知",
                     "message": send_message or "",
@@ -454,6 +456,12 @@ class NotificationManager:
                     await send_feishu_notification(config_data, channel_message)
                     notification_sent = True
                 elif channel_type == 'bark':
+                    if template_type == "chat":
+                        config_data, channel_message = prepare_bark_chat_notification(
+                            config_data,
+                            channel_message,
+                            template_context or {},
+                        )
                     await send_bark_notification(config_data, channel_message)
                     notification_sent = True
                 elif channel_type == 'email':
